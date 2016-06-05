@@ -203,9 +203,7 @@ def disassemble_charset(code_it, max_pos=None):
             category = sre_constants.CHCODES[arg]
             yield (op, category)
         else:
-            print('BAD', code_it.count, max_pos)
             assert False, 'unhandled opcode %r' % op
-        print('CHECK', code_it.count, max_pos)
         if max_pos is not None and code_it.count == max_pos:
             break
     else:
@@ -280,9 +278,7 @@ def _ensure_position(code_it, pos):
 
 
 def _consume_and_ensure_following(fn, code_it, max_pos, next_code):
-    print('MAX POS', max_pos, code_it.count)
     inner = list(fn(code_it, max_pos=max_pos - 1))
-    print('MAX POS AFTER', max_pos, code_it.count)
     next_op = sre_constants.OPCODES[next(code_it)]
     if next_op != next_code:
         raise InvalidCodeError('Expected %s, got %s' % (next_code, next_op))
