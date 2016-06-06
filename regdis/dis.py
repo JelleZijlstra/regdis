@@ -6,12 +6,14 @@ import sre_constants
 
 HAVE_ARG = {
     sre_constants.MARK,
+    sre_constants.GROUPREF,
+    sre_constants.GROUPREF_IGNORE,
+}
+HAVE_LITERAL_ARG = {
     sre_constants.LITERAL,
     sre_constants.NOT_LITERAL,
     sre_constants.LITERAL_IGNORE,
     sre_constants.NOT_LITERAL_IGNORE,
-    sre_constants.GROUPREF,
-    sre_constants.GROUPREF_IGNORE,
 }
 NO_ARG = {
     sre_constants.SUCCESS,
@@ -90,6 +92,9 @@ def _get_instructions_inner(code_it, max_pos=None):
         if op in HAVE_ARG:
             arg = next(code_it)
             yield (op, arg)
+        elif op in HAVE_LITERAL_ARG:
+            arg = next(code_it)
+            yield (op, chr(arg))
         elif op in NO_ARG:
             yield (op, None)
         elif op == sre_constants.AT:
@@ -107,25 +112,25 @@ def _get_instructions_inner(code_it, max_pos=None):
         elif op in (sre_constants.REPEAT_ONE, sre_constants.MIN_REPEAT_ONE):
             args = {}
             skip = args['skip'] = next(code_it)
-            max_pos = code_it.count + skip - 1
+            inner_max_pos = code_it.count + skip - 1
             args['min'] = next(code_it)
             args['max'] = next(code_it)
             if args['min'] > args['max'] or args['max'] > sre_constants.MAXREPEAT:
                 raise InvalidCodeError('Invalid min or max value')
             args['inner'] = _consume_and_ensure_following(
-                _get_instructions_inner, code_it, max_pos, sre_constants.SUCCESS)
-            _ensure_position(code_it.count, max_pos)
+                _get_instructions_inner, code_it, inner_max_pos, sre_constants.SUCCESS)
+            _ensure_position(code_it, inner_max_pos)
             yield (op, args)
         elif op == sre_constants.REPEAT:
             args = {}
             skip = args['skip'] = next(code_it)
-            max_pos = code_it.count + skip - 1
+            inner_max_pos = code_it.count + skip - 1
             args['min'] = next(code_it)
             args['max'] = next(code_it)
             if args['min'] > args['max'] or args['max'] > sre_constants.MAXREPEAT:
                 raise InvalidCodeError('Invalid min or max value')
-            args['inner'] = _get_instructions_inner(code_it, max_pos=max_pos)
-            _ensure_position(code_it.count, max_pos)
+            args['inner'] = _get_instructions_inner(code_it, max_pos=inner_max_pos)
+            _ensure_position(code_it.count, inner_max_pos)
             next_op = sre_constants.OPCODES[next(code_it)]
             if next_op not in (sre_constants.MAX_UNTIL, sre_constants.MIN_UNTIL):
                 raise InvalidCodeError('expected MAX_UNTIL or MIN_UNTIL to follow REPEAT')
@@ -135,34 +140,34 @@ def _get_instructions_inner(code_it, max_pos=None):
             starting_pos = code_it.count
             arg = next(code_it)
             skip = next(code_it)
-            max_pos = starting_pos + skip - 1
+            inner_max_pos = starting_pos + skip - 2
 
             args = {'arg': arg, 'skip': skip}
 
             if skip >= 3 and code_it.iterable[starting_pos + skip - 2] == sre_constants.JUMP:
-                args['then'] = list(_get_instructions_inner(code_it, max_pos=max_pos - 2))
-                jump_op = next(code_it)
+                args['then'] = list(_get_instructions_inner(code_it, max_pos=inner_max_pos))
+                jump_op = sre_constants.OPCODES[next(code_it)]
                 if jump_op != sre_constants.JUMP:
-                    raise InvalidCodeError('expected JUMP')
-                _ensure_position(code_it, max_pos)
+                    raise InvalidCodeError('expected JUMP, got %r' % jump_op)
+                _ensure_position(code_it, inner_max_pos + 1)
                 skip = next(code_it)
-                max_pos = code_it.count + skip - 1
+                inner_max_pos = code_it.count + skip - 1
                 args['jump_op'] = (jump_op, skip)
-                args['else'] = list(_get_instructions_inner(code_it, max_pos=max_pos))
-                _ensure_position(code_it, max_pos)
+                args['else'] = list(_get_instructions_inner(code_it, max_pos=inner_max_pos))
+                _ensure_position(code_it, inner_max_pos)
             else:
-                args['then'] = list(_get_instructions_inner(code_it, max_pos=max_pos))
-                _ensure_position(code_it, max_pos)
+                args['then'] = list(_get_instructions_inner(code_it, max_pos=inner_max_pos))
+                _ensure_position(code_it, inner_max_pos)
 
             yield (op, args)
         elif op in (sre_constants.ASSERT, sre_constants.ASSERT_NOT):
             skip = next(code_it)
-            max_pos = code_it.count + skip - 1
+            inner_max_pos = code_it.count + skip - 1
             width = next(code_it)
             if width & 0x80000000:
                 raise InvalidCodeError('width too large')
             inner = _consume_and_ensure_following(
-                _get_instructions_inner, code_it, max_pos, sre_constants.SUCCESS)
+                _get_instructions_inner, code_it, inner_max_pos, sre_constants.SUCCESS)
             yield (op, {'skip': skip, 'width': width, 'inner': inner})
         else:
             assert False, 'unhandled opcode %r' % op
@@ -184,7 +189,7 @@ def disassemble_charset(code_it, max_pos=None):
         elif op in (sre_constants.RANGE, sre_constants.RANGE_IGNORE):
             start = next(code_it)
             stop = next(code_it)
-            yield (op, (start, stop))
+            yield (op, (chr(start), chr(stop)))
         elif op == sre_constants.CHARSET:
             # 256-bit bitmap
             bits = list(islice(code_it, 256 / SRE_CODE_BITS))
