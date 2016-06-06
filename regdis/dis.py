@@ -129,8 +129,8 @@ def _get_instructions_inner(code_it, max_pos=None):
             args['max'] = next(code_it)
             if args['min'] > args['max'] or args['max'] > sre_constants.MAXREPEAT:
                 raise InvalidCodeError('Invalid min or max value')
-            args['inner'] = _get_instructions_inner(code_it, max_pos=inner_max_pos)
-            _ensure_position(code_it.count, inner_max_pos)
+            args['inner'] = list(_get_instructions_inner(code_it, max_pos=inner_max_pos))
+            _ensure_position(code_it, inner_max_pos)
             next_op = sre_constants.OPCODES[next(code_it)]
             if next_op not in (sre_constants.MAX_UNTIL, sre_constants.MIN_UNTIL):
                 raise InvalidCodeError('expected MAX_UNTIL or MIN_UNTIL to follow REPEAT')
@@ -192,7 +192,7 @@ def disassemble_charset(code_it, max_pos=None):
             yield (op, (chr(start), chr(stop)))
         elif op == sre_constants.CHARSET:
             # 256-bit bitmap
-            bits = list(islice(code_it, 256 / SRE_CODE_BITS))
+            bits = list(islice(code_it, 256 // SRE_CODE_BITS))
             yield (op, bits)
         elif op == sre_constants.BIGCHARSET:
             # nested table of bitmaps
@@ -201,7 +201,7 @@ def disassemble_charset(code_it, max_pos=None):
             contents = list(islice(code_it, contents_offset))
             blocks = []
             for _ in range(num_blocks):
-                blocks.append(list(islice(code_it, 256 / SRE_CODE_BITS)))
+                blocks.append(list(islice(code_it, 256 // SRE_CODE_BITS)))
             yield (op, (num_blocks, contents, blocks))
         elif op == sre_constants.CATEGORY:
             arg = next(code_it)
@@ -225,7 +225,7 @@ def _disassemble_branch(code_it):
         if skip == 0:
             break
         inner = list(_get_instructions_inner(code_it, max_pos=code_it.count + skip - 3))
-        next_op = next(code_it)
+        next_op = sre_constants.OPCODES[next(code_it)]
         if next_op != sre_constants.JUMP:
             raise InvalidCodeError('branch must be followed by JUMP (got %r)' % next_op)
         end_skip = next(code_it)
@@ -233,7 +233,7 @@ def _disassemble_branch(code_it):
 
         codes.append(inner)
         targets.append(code_it.count + end_skip - 1)
-        _ensure_position(code_it.count, max_pos)
+        _ensure_position(code_it, max_pos)
 
     if len(set(targets)) != 1:
         raise InvalidCodeError('Not all targets are the same: %s' % targets)
