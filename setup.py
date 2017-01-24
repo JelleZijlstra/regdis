@@ -22,7 +22,7 @@ def main():
         author='Jelle Zijlstra',
         author_email='jelle.zijlstra@gmail.com',
         packages=['regdis'],
-        url='https://github.com/JelleZijlstra/bytearound',
+        url='https://github.com/JelleZijlstra/regdis',
         classifiers=[
             'Development Status :: 3 - Alpha',
             'Intended Audience :: Developers',
